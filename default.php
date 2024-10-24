@@ -5,22 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Marcel Palianos Project</title>
     <style>
-
+        /* Basic styling for the map and modal */
         #map {
             height: 500px;
             width: 100%;
         }
 
-
+        /* Modal styles */
         #commentModal {
-            display: 
-            position:
+            display: none;
+            position: fixed;
             top: 20%;
             left: 50%;
             transform: translate(-50%, -20%);
             padding: 15px;
-            background-color:
-            border: 1px #ccc;
+            background-color: white;
+            border: 1px solid #ccc;
             z-index: 1000;
             width: 300px;
         }
@@ -30,8 +30,8 @@
         }
 
         #overlay {
-            position: 
-            display:
+            position: fixed;
+            display: none;
             top: 0;
             left: 0;
             width: 100%;
@@ -40,14 +40,14 @@
             z-index: 999;
         }
 
-        
+        /* Styles for the comments table */
         #commentsTable {
             width: 100%;
-            border-collapse: 
+            border-collapse: collapse;
             margin-top: 20px;
         }
         #commentsTable, #commentsTable th, #commentsTable td {
-            border: 1px #ccc;
+            border: 1px solid #ccc;
         }
         #commentsTable th, #commentsTable td {
             padding: 8px;
@@ -83,50 +83,53 @@
         </tr>
     </thead>
     <tbody>
-
+        <!-- Comments will be inserted here dynamically -->
     </tbody>
 </table>
 
 
-
+    <!-- Google Maps API and custom JavaScript -->
     <script>
         let map;
         let clickedLatLng;
 
-     function initMap() {
+        // Initialize the map
+        function initMap() {
             map = new google.maps.Map(document.getElementById("map"), {
-                center: { lat: 51.5072, lng: 0.1276 }, 
+                center: { lat: 51.5072, lng: 0.1276 }, // Default location (London)
                 zoom: 8,
             });
 
+// Assuming this is part of the function where you load comments
 fetch('get_comments.php')
     .then(response => response.json())
     .then(data => {
-        const commentsTable = document.getElementById("commentsTable"); 
-        commentsTable.innerHTML = ''; 
+        const commentsTable = document.getElementById("commentsTable"); // Your table element
+        commentsTable.innerHTML = ''; // Clear existing rows
         
         data.forEach(commentData => {
             const lat = parseFloat(commentData.lat);
             const lng = parseFloat(commentData.lng);
             getAreaName(lat, lng).then(areaName => {
-                
+                // Create a new row for the table
                 const row = commentsTable.insertRow();
-                row.insertCell(0).textContent = areaName; 
-                row.insertCell(1).textContent = commentData.comment; 
-                row.insertCell(2).textContent = new Date(commentData.created_at).toLocaleString(); 
+                row.insertCell(0).textContent = areaName; // General area name
+                row.insertCell(1).textContent = commentData.comment; // Comment text
+                row.insertCell(2).textContent = new Date(commentData.created_at).toLocaleString(); // Date
             });
         });
     })
     .catch(error => console.error('Error loading comments:', error));
 
 
+            // Add click event listener to the map
             map.addListener("click", (event) => {
                 clickedLatLng = event.latLng;
                 openModal();
             });
         }
 
-
+// Function to fetch area name using reverse geocoding
 function getAreaName(lat, lng) {
     return new Promise((resolve, reject) => {
         const geocoder = new google.maps.Geocoder();
@@ -135,24 +138,24 @@ function getAreaName(lat, lng) {
         geocoder.geocode({ location: latlng }, (results, status) => {
             if (status === "OK") {
                 if (results[0]) {
-                    console.log("Geocoding results:", results); 
+                    console.log("Geocoding results:", results); // Log results
                     let areaName = '';
 
-
+                    // Loop through the results to find general area names
                     for (let component of results[0].address_components) {
-
+                        // Check for administrative area (like city or neighborhood)
                         if (component.types.includes("locality") || component.types.includes("sublocality")) {
-                            areaName = component.long_name; 
-                            break; 
+                            areaName = component.long_name; // Use long_name for the full name
+                            break; // Stop after finding the first suitable name
                         }
                     }
                     
-
+                    // If no locality was found, you could use the formatted_address as a fallback
                     if (!areaName) {
-                        areaName = results[0].formatted_address;
+                        areaName = results[0].formatted_address; // Fallback to the full address
                     }
                     
-                    resolve(areaName);
+                    resolve(areaName); // Resolve with the area name
                 } else {
                     reject("No results found");
                 }
@@ -165,6 +168,7 @@ function getAreaName(lat, lng) {
 
 
 
+        // Open the modal for adding comments
         function openModal() {
             document.getElementById("overlay").style.display = "block";
             document.getElementById("commentModal").style.display = "block";
