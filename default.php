@@ -100,7 +100,6 @@
                 zoom: 8,
             });
 
-// Assuming this is part of the function where you load comments
 fetch('get_comments.php')
     .then(response => response.json())
     .then(data => {
@@ -145,7 +144,7 @@ function getAreaName(lat, lng) {
                     for (let component of results[0].address_components) {
                         // Check for administrative area (like city or neighborhood)
                         if (component.types.includes("locality") || component.types.includes("sublocality")) {
-                            areaName = component.long_name; // Use long_name for the full name
+                            areaName = component.long_name;
                             break; // Stop after finding the first suitable name
                         }
                     }
