@@ -47,7 +47,7 @@
         function initMap() {
             map = new google.maps.Map(document.getElementById("map"), {
                 center: { lat: 51.5072, lng: 0.1276 }, // Default location (London)
-                zoom: 8,
+                zoom: 20,
             });
 
 fetch('get_comments.php')
