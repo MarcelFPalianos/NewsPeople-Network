@@ -91,6 +91,12 @@ if (!isset($_SESSION['user_id'])) {
                             row.insertCell(1).textContent = commentData.comment; // Comment text
                             row.insertCell(2).textContent = commentData.user; // Display the username
                             row.insertCell(3).textContent = new Date(commentData.created_at).toLocaleString(); // Date
+                                    // Add voting buttons
+                            const voteCell = row.insertCell(4);
+                            voteCell.innerHTML = `
+                            <button onclick="voteComment(${commentData.id}, 'true')">Vote True</button>
+                            <button onclick="voteComment(${commentData.id}, 'false')">Vote False</button>
+        `;
                         });
                     });
                 })
