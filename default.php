@@ -1,3 +1,12 @@
+<?php
+session_start(); // Start the session
+
+// Check if the user is logged in
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php"); // Redirect to login page if not logged in
+    exit();
+}
+?>
 
 <!DOCTYPE html>
 <html lang="en">
@@ -6,9 +15,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Marcel Palianos Project</title>
     <link rel="stylesheet" href="style.css"> <!-- Linking the external CSS file -->
- 
 </head>
 <body>
+
+    <!-- Displaying the logged-in user's name -->
+    <h2>Welcome to the Default Page</h2>
+    <p>Hello, <?php echo htmlspecialchars($_SESSION['user']); ?>! You are logged in.</p>
+    <a href="logout.php">Logout</a>
+    <a href="register.php">Register a New Account</a>
 
     <!-- Map container -->
     <div id="map"></div>
@@ -23,31 +37,20 @@
         <button onclick="closeModal()">Cancel</button>
     </div>
 
-<!-- Comments table -->
-<table id="commentsTable">
-    <thead>
-        <tr>
-            <th>Area</th>
-            <th>Comment</th>
-            <th>Date</th>
-            <th>Vote</th> <!-- New column for voting buttons -->
-        </tr>
-    </thead>
-    <tbody>
-        <!-- Example row -->
-        <tr>
-            <td>London</td>
-            <td>This is an example comment.</td>
-            <td>2025-01-18</td>
-            <td>
-                <button onclick="voteComment(1, 'true')">Vote True</button>
-                <button onclick="voteComment(1, 'false')">Vote False</button>
-            </td>
-        </tr>
-        <!-- Comments will be inserted here dynamically -->
-    </tbody>
-</table>
-
+    <!-- Comments table -->
+    <table id="commentsTable">
+        <thead>
+            <tr>
+                <th>Area</th>
+                <th>Comment</th>
+                <th>Username</th> <!-- Added Username column -->
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Comments will be inserted here dynamically -->
+        </tbody>
+    </table>
 
     <!-- Google Maps API and custom JavaScript -->
     <script>
@@ -61,26 +64,26 @@
                 zoom: 19,
             });
 
-fetch('get_comments.php')
-    .then(response => response.json())
-    .then(data => {
-        const commentsTable = document.getElementById("commentsTable"); // Your table element
-        commentsTable.innerHTML = ''; // Clear existing rows
-        
-        data.forEach(commentData => {
-            const lat = parseFloat(commentData.lat);
-            const lng = parseFloat(commentData.lng);
-            getAreaName(lat, lng).then(areaName => {
-                // Create a new row for the table
-                const row = commentsTable.insertRow();
-                row.insertCell(0).textContent = areaName; // General area name
-                row.insertCell(1).textContent = commentData.comment; // Comment text
-                row.insertCell(2).textContent = new Date(commentData.created_at).toLocaleString(); // Date
-            });
-        });
-    })
-    .catch(error => console.error('Error loading comments:', error));
-
+            fetch('get_comments.php')
+                .then(response => response.json())
+                .then(data => {
+                    const commentsTable = document.getElementById("commentsTable"); // Your table element
+                    commentsTable.innerHTML = ''; // Clear existing rows
+                    
+                    data.forEach(commentData => {
+                        const lat = parseFloat(commentData.lat);
+                        const lng = parseFloat(commentData.lng);
+                        getAreaName(lat, lng).then(areaName => {
+                            // Create a new row for the table
+                            const row = commentsTable.insertRow();
+                            row.insertCell(0).textContent = areaName; // General area name
+                            row.insertCell(1).textContent = commentData.comment; // Comment text
+                            row.insertCell(2).textContent = commentData.user; // Display the username
+                            row.insertCell(3).textContent = new Date(commentData.created_at).toLocaleString(); // Date
+                        });
+                    });
+                })
+                .catch(error => console.error('Error loading comments:', error));
 
             // Add click event listener to the map
             map.addListener("click", (event) => {
@@ -89,44 +92,25 @@ fetch('get_comments.php')
             });
         }
 
-// Function to fetch area name using reverse geocoding
-function getAreaName(lat, lng) {
-    return new Promise((resolve, reject) => {
-        const geocoder = new google.maps.Geocoder();
-        const latlng = { lat: lat, lng: lng };
-        
-        geocoder.geocode({ location: latlng }, (results, status) => {
-            if (status === "OK") {
-                if (results[0]) {
-                    console.log("Geocoding results:", results); // Log results
-                    let areaName = '';
-
-                    // Loop through the results to find general area names
-                    for (let component of results[0].address_components) {
-                        // Check for administrative area (like city or neighborhood)
-                        if (component.types.includes("locality") || component.types.includes("sublocality")) {
-                            areaName = component.long_name;
-                            break; // Stop after finding the first suitable name
+        // Function to fetch area name using reverse geocoding
+        function getAreaName(lat, lng) {
+            return new Promise((resolve, reject) => {
+                const geocoder = new google.maps.Geocoder();
+                const latlng = { lat: lat, lng: lng };
+                
+                geocoder.geocode({ location: latlng }, (results, status) => {
+                    if (status === "OK") {
+                        if (results[0]) {
+                            resolve(results[0].formatted_address); // Ensure this returns a valid area name
+                        } else {
+                            reject("No results found");
                         }
+                    } else {
+                        reject("Geocoder failed due to: " + status);
                     }
-                    
-                    // If no locality was found, you could use the formatted_address as a fallback
-                    if (!areaName) {
-                        areaName = results[0].formatted_address; // Fallback to the full address
-                    }
-                    
-                    resolve(areaName); // Resolve with the area name
-                } else {
-                    reject("No results found");
-                }
-            } else {
-                reject("Geocoder failed due to: " + status);
-            }
-        });
-    });
-}
-
-
+                });
+            });
+        }
 
         // Open the modal for adding comments
         function openModal() {
@@ -140,90 +124,70 @@ function getAreaName(lat, lng) {
             document.getElementById("commentModal").style.display = "none";
         }
 
-// Submit the comment
-function submitComment() {
-    const comment = document.getElementById("commentText").value;
+        // Submit the comment
+        function submitComment() {
+            const comment = document.getElementById("commentText").value;
 
-    if (comment) {
-        // Get area name first
-        getAreaName(clickedLatLng.lat(), clickedLatLng.lng()).then(areaName => {
-            // Send the comment data to add_comment.php using fetch
-            fetch('add_comment.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `lat=${clickedLatLng.lat()}&lng=${clickedLatLng.lng()}&comment=${encodeURIComponent(comment)}`,
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    // Add the marker to the map with the new comment
-                    const marker = new google.maps.Marker({
-                        position: clickedLatLng,
-                        map: map,
+            if (comment) {
+                // Get area name first
+                getAreaName(clickedLatLng.lat(), clickedLatLng.lng()).then(areaName => {
+                    // Send the comment data to add_comment.php using fetch
+                    fetch('add_comment.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `lat=${clickedLatLng.lat()}&lng=${clickedLatLng.lng()}&comment=${encodeURIComponent(comment)}`,
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // Add the marker to the map with the new comment
+                            const marker = new google.maps.Marker({
+                                position: clickedLatLng,
+                                map: map,
+                            });
+
+                            const infoWindow = new google.maps.InfoWindow({
+                                content: comment,
+                            });
+
+                            marker.addListener("click", () => {
+                                infoWindow.open(map, marker);
+                            });
+
+                            // Close the modal and clear the input field
+                            closeModal();
+                            document.getElementById("commentText").value = "";
+
+                            // Add the new comment to the table with the area name and username
+                            addCommentToTable(clickedLatLng.lat(), clickedLatLng.lng(), comment, new Date().toLocaleString(), areaName, '<?php echo $_SESSION["user"]; ?>');
+                        } else {
+                            alert("Error saving comment.");
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
                     });
-
-                    const infoWindow = new google.maps.InfoWindow({
-                        content: comment,
-                    });
-
-                    marker.addListener("click", () => {
-                        infoWindow.open(map, marker);
-                    });
-
-                    // Close the modal and clear the input field
-                    closeModal();
-                    document.getElementById("commentText").value = "";
-
-                    // Add the new comment to the table with the area name
-                    addCommentToTable(clickedLatLng.lat(), clickedLatLng.lng(), comment, new Date().toLocaleString(), areaName);
-                } else {
-                    alert("Error saving comment.");
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
-        }).catch(err => {
-            console.error("Error getting area name:", err);
-        });
-    } else {
-        alert("Please enter a comment.");
-    }
-}
-
-// Function to fetch area name using reverse geocoding
-function getAreaName(lat, lng) {
-    return new Promise((resolve, reject) => {
-        const geocoder = new google.maps.Geocoder();
-        const latlng = { lat: lat, lng: lng };
-        
-        geocoder.geocode({ location: latlng }, (results, status) => {
-            if (status === "OK") {
-                if (results[0]) {
-                    resolve(results[0].formatted_address); // Ensure this returns a valid area name
-                } else {
-                    reject("No results found");
-                }
+                }).catch(err => {
+                    console.error("Error getting area name:", err);
+                });
             } else {
-                reject("Geocoder failed due to: " + status);
+                alert("Please enter a comment.");
             }
-        });
-    });
-}
+        }
 
-// Function to add a comment to the table
-function addCommentToTable(lat, lng, comment, createdAt, areaName) {
-    const tableRow = document.createElement("tr");
-    tableRow.innerHTML = `
-        <td>${areaName}</td>  <!-- Area Name -->
-        <td>${comment}</td>
-        <td>${createdAt}</td> <!-- Display creation time -->
-        
-    `;
-    document.querySelector("#commentsTable tbody").appendChild(tableRow);
-}
+        // Function to add a comment to the table
+        function addCommentToTable(lat, lng, comment, createdAt, areaName, user) {
+            const tableRow = document.createElement("tr");
+            tableRow.innerHTML = `
+                <td>${areaName}</td>  <!-- Area Name -->
+                <td>${comment}</td>
+                <td>${user}</td>  <!-- Display Username -->
+                <td>${createdAt}</td> <!-- Display creation time -->
+            `;
+            document.querySelector("#commentsTable tbody").appendChild(tableRow);
+        }
 
     </script>
 
