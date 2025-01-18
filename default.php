@@ -37,20 +37,31 @@ if (!isset($_SESSION['user_id'])) {
         <button onclick="closeModal()">Cancel</button>
     </div>
 
-    <!-- Comments table -->
-    <table id="commentsTable">
-        <thead>
-            <tr>
-                <th>Area</th>
-                <th>Comment</th>
-                <th>Username</th> <!-- Added Username column -->
-                <th>Date</th>
-            </tr>
-        </thead>
-        <tbody>
-            <!-- Comments will be inserted here dynamically -->
-        </tbody>
-    </table>
+<!-- Comments table -->
+<table id="commentsTable">
+    <thead>
+        <tr>
+            <th>Area</th>
+            <th>Comment</th>
+            <th>Date</th>
+            <th>Vote</th> <!-- New column for voting buttons -->
+        </tr>
+    </thead>
+    <tbody>
+        <!-- Example row -->
+        <tr>
+            <td>London</td>
+            <td>This is an example comment.</td>
+            <td>2025-01-18</td>
+            <td>
+                <button onclick="voteComment(1, 'true')">Vote True</button>
+                <button onclick="voteComment(1, 'false')">Vote False</button>
+            </td>
+        </tr>
+        <!-- Comments will be inserted here dynamically -->
+    </tbody>
+</table>
+
 
     <!-- Google Maps API and custom JavaScript -->
     <script>
