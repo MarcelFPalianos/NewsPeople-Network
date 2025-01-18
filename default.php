@@ -205,6 +205,24 @@ if (!isset($_SESSION['user_id'])) {
             `;
             document.querySelector("#commentsTable tbody").appendChild(tableRow);
         }
+        function voteComment(commentId, voteType) {
+    fetch('vote.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `comment_id=${commentId}&vote=${voteType}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Vote recorded successfully!');
+            // Optionally reload or update the UI dynamically
+        } else {
+            alert(`Error: ${data.message}`);
+        }
+    })
+    .catch(error => console.error('Error:', error));
+}
+
 
     </script>
 
