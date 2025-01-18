@@ -206,7 +206,7 @@ if (!isset($_SESSION['user_id'])) {
             document.querySelector("#commentsTable tbody").appendChild(tableRow);
         }
         function voteComment(commentId, voteType) {
-    fetch('add_comment.php', {
+    fetch('vote.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `comment_id=${commentId}&vote=${voteType}`
