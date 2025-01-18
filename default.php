@@ -23,16 +23,27 @@
         <button onclick="closeModal()">Cancel</button>
     </div>
 
-    <!-- Comments table -->
+<!-- Comments table -->
 <table id="commentsTable">
     <thead>
         <tr>
             <th>Area</th>
             <th>Comment</th>
             <th>Date</th>
+            <th>Vote</th> <!-- New column for voting buttons -->
         </tr>
     </thead>
     <tbody>
+        <!-- Example row -->
+        <tr>
+            <td>London</td>
+            <td>This is an example comment.</td>
+            <td>2025-01-18</td>
+            <td>
+                <button onclick="voteComment(1, 'true')">Vote True</button>
+                <button onclick="voteComment(1, 'false')">Vote False</button>
+            </td>
+        </tr>
         <!-- Comments will be inserted here dynamically -->
     </tbody>
 </table>
@@ -209,6 +220,7 @@ function addCommentToTable(lat, lng, comment, createdAt, areaName) {
         <td>${areaName}</td>  <!-- Area Name -->
         <td>${comment}</td>
         <td>${createdAt}</td> <!-- Display creation time -->
+        
     `;
     document.querySelector("#commentsTable tbody").appendChild(tableRow);
 }
