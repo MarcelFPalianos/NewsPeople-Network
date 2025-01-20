@@ -6,8 +6,56 @@ if (!isset($_SESSION['user_id'])) {
     header("Location: login.php"); // Redirect to login page if not logged in
     exit();
 }
-?>
 
+// Include the database connection
+include 'db.php';
+
+// Check if this is a vote request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['comment_id'], $_POST['vote'])) {
+    // Handle the vote request
+    try {
+        // Get data from POST
+        $comment_id = intval($_POST['comment_id']);
+        $vote = $_POST['vote'];
+        $user_id = $_SESSION['user_id'];
+
+        // Validate the input
+        if (!in_array($vote, ['true', 'false'])) {
+            throw new Exception('Invalid vote type');
+        }
+
+        // Check if the user has already voted for this comment
+        $stmt = $conn->prepare("SELECT * FROM votes WHERE comment_id = ? AND user_id = ?");
+        $stmt->bind_param("ii", $comment_id, $user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        if ($result->num_rows > 0) {
+            echo json_encode(['status' => 'error', 'message' => 'You have already voted for this comment']);
+            exit();
+        }
+
+        // Insert the vote
+        $stmt = $conn->prepare("INSERT INTO votes (comment_id, user_id, vote) VALUES (?, ?, ?)");
+        if (!$stmt) {
+            throw new Exception('Failed to prepare statement: ' . $conn->error);
+        }
+
+        $stmt->bind_param("iis", $comment_id, $user_id, $vote);
+        if (!$stmt->execute()) {
+            throw new Exception('Failed to execute statement: ' . $stmt->error);
+        }
+
+        echo json_encode(['status' => 'success', 'message' => 'Vote recorded successfully']);
+        exit();
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        exit();
+    }
+}
+
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,196 +85,42 @@ if (!isset($_SESSION['user_id'])) {
         <button onclick="closeModal()">Cancel</button>
     </div>
 
-<!-- Comments table -->
-<table id="commentsTable">
-    <thead>
-        <tr>
-            <th>Area</th>
-            <th>Comment</th>
-            <th>Date</th>
-            <th>Vote</th> <!-- New column for voting buttons -->
-        </tr>
-    </thead>
-    <tbody>
-        <!-- Example row -->
-        <tr>
-            <td>London</td>
-            <td>This is an example comment.</td>
-            <td>2025-01-18</td>
-            <td>
-                <button onclick="voteComment(1, 'true')">Vote True</button>
-                <button onclick="voteComment(1, 'false')">Vote False</button>
-            </td>
-        </tr>
-        <!-- Comments will be inserted here dynamically -->
-    </tbody>
-</table>
-
+    <!-- Comments table -->
+    <table id="commentsTable">
+        <thead>
+            <tr>
+                <th>Area</th>
+                <th>Comment</th>
+                <th>Date</th>
+                <th>Vote</th> <!-- New column for voting buttons -->
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Comments will be inserted dynamically -->
+        </tbody>
+    </table>
 
     <!-- Google Maps API and custom JavaScript -->
     <script>
-        let map;
-        let clickedLatLng;
-
-        // Initialize the map
-        function initMap() {
-            map = new google.maps.Map(document.getElementById("map"), {
-                center: { lat: 51.5072, lng: 0.1276 }, // Default location (London)
-                zoom: 19,
-            });
-
-            fetch('get_comments.php')
-                .then(response => response.json())
-                .then(data => {
-                    const commentsTable = document.getElementById("commentsTable"); // Your table element
-                    commentsTable.innerHTML = ''; // Clear existing rows
-                    
-                    data.forEach(commentData => {
-                        const lat = parseFloat(commentData.lat);
-                        const lng = parseFloat(commentData.lng);
-                        getAreaName(lat, lng).then(areaName => {
-                            // Create a new row for the table
-                            const row = commentsTable.insertRow();
-                            row.insertCell(0).textContent = areaName; // General area name
-                            row.insertCell(1).textContent = commentData.comment; // Comment text
-                            row.insertCell(2).textContent = commentData.user; // Display the username
-                            row.insertCell(3).textContent = new Date(commentData.created_at).toLocaleString(); // Date
-                                    // Add voting buttons
-                            const voteCell = row.insertCell(4);
-                            voteCell.innerHTML = `
-                            <button onclick="voteComment(${commentData.id}, 'true')">Vote True</button>
-                            <button onclick="voteComment(${commentData.id}, 'false')">Vote False</button>
-        `;
-                        });
-                    });
-                })
-                .catch(error => console.error('Error loading comments:', error));
-
-            // Add click event listener to the map
-            map.addListener("click", (event) => {
-                clickedLatLng = event.latLng;
-                openModal();
-            });
-        }
-
-        // Function to fetch area name using reverse geocoding
-        function getAreaName(lat, lng) {
-            return new Promise((resolve, reject) => {
-                const geocoder = new google.maps.Geocoder();
-                const latlng = { lat: lat, lng: lng };
-                
-                geocoder.geocode({ location: latlng }, (results, status) => {
-                    if (status === "OK") {
-                        if (results[0]) {
-                            resolve(results[0].formatted_address); // Ensure this returns a valid area name
-                        } else {
-                            reject("No results found");
-                        }
-                    } else {
-                        reject("Geocoder failed due to: " + status);
-                    }
-                });
-            });
-        }
-
-        // Open the modal for adding comments
-        function openModal() {
-            document.getElementById("overlay").style.display = "block";
-            document.getElementById("commentModal").style.display = "block";
-        }
-
-        // Close the modal
-        function closeModal() {
-            document.getElementById("overlay").style.display = "none";
-            document.getElementById("commentModal").style.display = "none";
-        }
-
-        // Submit the comment
-        function submitComment() {
-            const comment = document.getElementById("commentText").value;
-
-            if (comment) {
-                // Get area name first
-                getAreaName(clickedLatLng.lat(), clickedLatLng.lng()).then(areaName => {
-                    // Send the comment data to add_comment.php using fetch
-                    fetch('add_comment.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: `lat=${clickedLatLng.lat()}&lng=${clickedLatLng.lng()}&comment=${encodeURIComponent(comment)}`,
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            // Add the marker to the map with the new comment
-                            const marker = new google.maps.Marker({
-                                position: clickedLatLng,
-                                map: map,
-                            });
-
-                            const infoWindow = new google.maps.InfoWindow({
-                                content: comment,
-                            });
-
-                            marker.addListener("click", () => {
-                                infoWindow.open(map, marker);
-                            });
-
-                            // Close the modal and clear the input field
-                            closeModal();
-                            document.getElementById("commentText").value = "";
-
-                            // Add the new comment to the table with the area name and username
-                            addCommentToTable(clickedLatLng.lat(), clickedLatLng.lng(), comment, new Date().toLocaleString(), areaName, '<?php echo $_SESSION["user"]; ?>');
-                        } else {
-                            alert("Error saving comment.");
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                    });
-                }).catch(err => {
-                    console.error("Error getting area name:", err);
-                });
-            } else {
-                alert("Please enter a comment.");
-            }
-        }
-
-        // Function to add a comment to the table
-        function addCommentToTable(lat, lng, comment, createdAt, areaName, user) {
-            const tableRow = document.createElement("tr");
-            tableRow.innerHTML = `
-                <td>${areaName}</td>  <!-- Area Name -->
-                <td>${comment}</td>
-                <td>${user}</td>  <!-- Display Username -->
-                <td>${createdAt}</td> <!-- Display creation time -->
-            `;
-            document.querySelector("#commentsTable tbody").appendChild(tableRow);
-        }
         function voteComment(commentId, voteType) {
-    fetch('vote.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `comment_id=${commentId}&vote=${voteType}`
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            alert('Vote recorded successfully!');
-            // Optionally reload or update the UI dynamically
-        } else {
-            alert(`Error: ${data.message}`);
+            console.log(`Sending vote: comment_id=${commentId}, vote=${voteType}`); // Debug log
+            fetch('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `comment_id=${commentId}&vote=${voteType}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data); // Log backend response
+                if (data.status === 'success') {
+                    alert('Vote recorded successfully!');
+                } else {
+                    alert(`Error: ${data.message}`);
+                }
+            })
+            .catch(error => console.error('Error:', error));
         }
-    })
-    .catch(error => console.error('Error:', error));
-}
-
-
     </script>
-
-    <!-- Load the Google Maps API -->
-    <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAejIG8ajQJk01Nzl8cabksIJ4gnsE_DXQ&callback=initMap"></script>
+    <script async src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap"></script>
 </body>
 </html>
