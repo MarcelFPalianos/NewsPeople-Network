@@ -3,204 +3,230 @@ session_start(); // Start the session
 
 // Check if the user is logged in
 if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php"); // Redirect to login page if not logged in
-    exit();
-}
-
-// Include the database connection
-include 'db.php';
-
-// Handle POST requests for votes and comments
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    try {
-        if (isset($_POST['comment_id'], $_POST['vote'])) {
-            // Handle vote request
-            $comment_id = intval($_POST['comment_id']);
-            $vote = $_POST['vote'];
-            $user_id = $_SESSION['user_id'];
-
-            if (!in_array($vote, ['true', 'false'])) {
-                throw new Exception('Invalid vote type');
-            }
-
-            $stmt = $conn->prepare("SELECT * FROM votes WHERE comment_id = ? AND user_id = ?");
-            $stmt->bind_param("ii", $comment_id, $user_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-
-            if ($result->num_rows > 0) {
-                echo json_encode(['status' => 'error', 'message' => 'You have already voted for this comment']);
-                exit();
-            }
-
-            $stmt = $conn->prepare("INSERT INTO votes (comment_id, user_id, vote) VALUES (?, ?, ?)");
-            if (!$stmt) {
-                throw new Exception('Failed to prepare statement: ' . $conn->error);
-            }
-            $stmt->bind_param("iis", $comment_id, $user_id, $vote);
-            if (!$stmt->execute()) {
-                throw new Exception('Failed to execute statement: ' . $stmt->error);
-            }
-
-            echo json_encode(['status' => 'success', 'message' => 'Vote recorded successfully']);
-            exit();
-        } elseif (isset($_POST['lat'], $_POST['lng'], $_POST['comment'])) {
-            // Handle adding a comment
-            $lat = floatval($_POST['lat']);
-            $lng = floatval($_POST['lng']);
-            $comment = htmlspecialchars($_POST['comment']);
-            $user = $_SESSION['user'];
-
-            $stmt = $conn->prepare("INSERT INTO comments (user, lat, lng, comment, created_at) VALUES (?, ?, ?, ?, NOW())");
-            if (!$stmt) {
-                throw new Exception('Failed to prepare statement: ' . $conn->error);
-            }
-            $stmt->bind_param("sdds", $user, $lat, $lng, $comment);
-            if (!$stmt->execute()) {
-                throw new Exception('Failed to execute statement: ' . $stmt->error);
-            }
-
-            echo json_encode(['status' => 'success', 'message' => 'Comment added successfully']);
-            exit();
-        } else {
-            throw new Exception('Invalid request');
-        }
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
-        exit();
-    }
+header("Location: login.php"); // Redirect to login page if not logged in
+exit();
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marcel Palianos Project</title>
-    <link rel="stylesheet" href="style.css"> <!-- Linking the external CSS file -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marcel Palianos Project</title>
+<link rel="stylesheet" href="style.css"> <!-- Linking the external CSS file -->
 </head>
 <body>
 
-    <!-- Displaying the logged-in user's name -->
-    <h2>Welcome to the Default Page</h2>
-    <p>Hello, <?php echo htmlspecialchars($_SESSION['user']); ?>! You are logged in.</p>
-    <a href="logout.php">Logout</a>
-    <a href="register.php">Register a New Account</a>
+<!-- Displaying the logged-in user's name -->
+<h2>Welcome to the Default Page</h2>
+<p>Hello, <?php echo htmlspecialchars($_SESSION['user']); ?>! You are logged in.</p>
+<a href="logout.php">Logout</a>
+<a href="register.php">Register a New Account</a>
 
-    <!-- Map container -->
-    <div id="map"></div>
+<!-- Map container -->
+<div id="map"></div>
 
-    <!-- Comment modal -->
-    <div id="overlay"></div>
-    <div id="commentModal">
-        <h3>Leave a Comment</h3>
-        <textarea id="commentText" rows="4"></textarea>
-        <br>
-        <button onclick="submitComment()">Submit</button>
-        <button onclick="closeModal()">Cancel</button>
-    </div>
+<!-- Comment modal -->
+<div id="overlay"></div>
+<div id="commentModal">
+<h3>Leave a Comment</h3>
+<textarea id="commentText" rows="4"></textarea>
+<br>
+<button onclick="submitComment()">Submit</button>
+<button onclick="closeModal()">Cancel</button>
+</div>
 
-    <!-- Comments table -->
-    <table id="commentsTable">
-        <thead>
-            <tr>
-                <th>Area</th>
-                <th>Comment</th>
-                <th>User</th>
-                <th>Date</th>
-                <th>Vote</th> <!-- New column for voting buttons -->
-            </tr>
-        </thead>
-        <tbody>
-            <!-- Comments will be inserted dynamically -->
-        </tbody>
-    </table>
+<!-- Comments table -->
+<table id="commentsTable">
+<thead>
+<tr>
+<th>Area</th>
+<th>Comment</th>
+<th>Date</th>
+<th>Vote</th> <!-- New column for voting buttons -->
+</tr>
+</thead>
+<tbody>
+<!-- Example row -->
+<tr>
+<td>London</td>
+<td>This is an example comment.</td>
+<td>2025-01-18</td>
+<td>
+<button onclick="voteComment(1, 'true')">Vote True</button>
+<button onclick="voteComment(1, 'false')">Vote False</button>
+</td>
+</tr>
+<!-- Comments will be inserted here dynamically -->
+</tbody>
+</table>
 
-    <!-- Google Maps API and custom JavaScript -->
-    <script>
-        let map;
-        let clickedLatLng;
 
-        function initMap() {
-            map = new google.maps.Map(document.getElementById("map"), {
-                center: { lat: 51.5072, lng: 0.1276 }, // Default location (London)
-                zoom: 19,
-            });
+<!-- Google Maps API and custom JavaScript -->
+<script>
+let map;
+let clickedLatLng;
 
-            fetch('get_comments.php')
-                .then(response => response.json())
-                .then(data => {
-                    const commentsTable = document.querySelector("#commentsTable tbody");
-                    commentsTable.innerHTML = ''; // Clear existing rows
-                    data.forEach(comment => {
-                        const row = document.createElement("tr");
-                        row.innerHTML = `
-                            <td>${comment.area || 'Unknown'}</td>
-                            <td>${comment.comment}</td>
-                            <td>${comment.user}</td>
-                            <td>${new Date(comment.created_at).toLocaleString()}</td>
-                            <td>
-                                <button onclick="voteComment(${comment.id}, 'true')">Vote True</button>
-                                <button onclick="voteComment(${comment.id}, 'false')">Vote False</button>
-                            </td>
-                        `;
-                        commentsTable.appendChild(row);
-                    });
-                });
-        }
+// Initialize the map
+function initMap() {
+map = new google.maps.Map(document.getElementById("map"), {
+center: { lat: 51.5072, lng: 0.1276 }, // Default location (London)
+zoom: 19,
+});
 
-        function submitComment() {
-            const commentText = document.getElementById("commentText").value;
-            if (!clickedLatLng || !commentText) {
-                alert("Please fill in all fields");
-                return;
-            }
-            fetch('', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `lat=${clickedLatLng.lat()}&lng=${clickedLatLng.lng()}&comment=${encodeURIComponent(commentText)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    alert("Comment added successfully");
-                    closeModal();
-                    initMap(); // Refresh the map and comments
-                } else {
-                    alert(`Error: ${data.message}`);
-                }
-            })
-            .catch(error => console.error("Error:", error));
-        }
+fetch('get_comments.php')
+.then(response => response.json())
+.then(data => {
+const commentsTable = document.getElementById("commentsTable"); // Your table element
+commentsTable.innerHTML = ''; // Clear existing rows
 
+data.forEach(commentData => {
+const lat = parseFloat(commentData.lat);
+const lng = parseFloat(commentData.lng);
+getAreaName(lat, lng).then(areaName => {
+// Create a new row for the table
+const row = commentsTable.insertRow();
+row.insertCell(0).textContent = areaName; // General area name
+row.insertCell(1).textContent = commentData.comment; // Comment text
+row.insertCell(2).textContent = commentData.user; // Display the username
+row.insertCell(3).textContent = new Date(commentData.created_at).toLocaleString(); // Date
+// Add voting buttons
+const voteCell = row.insertCell(4);
+voteCell.innerHTML = `
+<button onclick="voteComment(${commentData.id}, 'true')">Vote True</button>
+<button onclick="voteComment(${commentData.id}, 'false')">Vote False</button>
+`;
+});
+});
+})
+.catch(error => console.error('Error loading comments:', error));
+
+// Add click event listener to the map
+map.addListener("click", (event) => {
+clickedLatLng = event.latLng;
+openModal();
+});
+}
+
+// Function to fetch area name using reverse geocoding
+function getAreaName(lat, lng) {
+return new Promise((resolve, reject) => {
+const geocoder = new google.maps.Geocoder();
+const latlng = { lat: lat, lng: lng };
+
+geocoder.geocode({ location: latlng }, (results, status) => {
+if (status === "OK") {
+if (results[0]) {
+resolve(results[0].formatted_address); // Ensure this returns a valid area name
+} else {
+reject("No results found");
+}
+} else {
+reject("Geocoder failed due to: " + status);
+}
+});
+});
+}
+
+// Open the modal for adding comments
+function openModal() {
+document.getElementById("overlay").style.display = "block";
+document.getElementById("commentModal").style.display = "block";
+}
+
+// Close the modal
+function closeModal() {
+document.getElementById("overlay").style.display = "none";
+document.getElementById("commentModal").style.display = "none";
+}
+
+// Submit the comment
+function submitComment() {
+const comment = document.getElementById("commentText").value;
+
+if (comment) {
+// Get area name first
+getAreaName(clickedLatLng.lat(), clickedLatLng.lng()).then(areaName => {
+// Send the comment data to add_comment.php using fetch
+fetch('add_comment.php', {
+method: 'POST',
+headers: {
+'Content-Type': 'application/x-www-form-urlencoded',
+},
+body: `lat=${clickedLatLng.lat()}&lng=${clickedLatLng.lng()}&comment=${encodeURIComponent(comment)}`,
+})
+.then(response => response.json())
+.then(data => {
+if (data.status === 'success') {
+// Add the marker to the map with the new comment
+const marker = new google.maps.Marker({
+position: clickedLatLng,
+map: map,
+});
+
+const infoWindow = new google.maps.InfoWindow({
+content: comment,
+});
+
+marker.addListener("click", () => {
+infoWindow.open(map, marker);
+});
+
+// Close the modal and clear the input field
+closeModal();
+document.getElementById("commentText").value = "";
+
+// Add the new comment to the table with the area name and username
+addCommentToTable(clickedLatLng.lat(), clickedLatLng.lng(), comment, new Date().toLocaleString(), areaName, '<?php echo $_SESSION["user"]; ?>');
+} else {
+alert("Error saving comment.");
+}
+})
+.catch(error => {
+console.error('Error:', error);
+});
+}).catch(err => {
+console.error("Error getting area name:", err);
+});
+} else {
+alert("Please enter a comment.");
+}
+}
+
+// Function to add a comment to the table
+function addCommentToTable(lat, lng, comment, createdAt, areaName, user) {
+const tableRow = document.createElement("tr");
+tableRow.innerHTML = `
+<td>${areaName}</td>  <!-- Area Name -->
+<td>${comment}</td>
+<td>${user}</td>  <!-- Display Username -->
+<td>${createdAt}</td> <!-- Display creation time -->
+`;
+document.querySelector("#commentsTable tbody").appendChild(tableRow);
+}
         function voteComment(commentId, voteType) {
-            fetch('', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `comment_id=${commentId}&vote=${voteType}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    alert("Vote recorded successfully");
-                } else {
-                    alert(`Error: ${data.message}`);
-                }
-            })
-            .catch(error => console.error("Error:", error));
+    fetch('vote.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `comment_id=${commentId}&vote=${voteType}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Vote recorded successfully!');
+            // Optionally reload or update the UI dynamically
+        } else {
+            alert(`Error: ${data.message}`);
         }
+    })
+    .catch(error => console.error('Error:', error));
+}
 
-        function openModal() {
-            document.getElementById("overlay").style.display = "block";
-            document.getElementById("commentModal").style.display = "block";
-        }
 
-        function closeModal() {
-            document.getElementById("overlay").style.display = "none";
-            document.getElementById("commentModal").style.display = "none";
-        }
-    </script>
-    <script async src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap"></script>
+</script>
+
+<!-- Load the Google Maps API -->
+<script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAejIG8ajQJk01Nzl8cabksIJ4gnsE_DXQ&callback=initMap"></script>
 </body>
 </html>
