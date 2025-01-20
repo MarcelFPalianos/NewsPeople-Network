@@ -10,51 +10,67 @@ if (!isset($_SESSION['user_id'])) {
 // Include the database connection
 include 'db.php';
 
-// Check if this is a vote request
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['comment_id'], $_POST['vote'])) {
-    // Handle the vote request
+// Handle POST requests for votes and comments
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        // Get data from POST
-        $comment_id = intval($_POST['comment_id']);
-        $vote = $_POST['vote'];
-        $user_id = $_SESSION['user_id'];
+        if (isset($_POST['comment_id'], $_POST['vote'])) {
+            // Handle vote request
+            $comment_id = intval($_POST['comment_id']);
+            $vote = $_POST['vote'];
+            $user_id = $_SESSION['user_id'];
 
-        // Validate the input
-        if (!in_array($vote, ['true', 'false'])) {
-            throw new Exception('Invalid vote type');
-        }
+            if (!in_array($vote, ['true', 'false'])) {
+                throw new Exception('Invalid vote type');
+            }
 
-        // Check if the user has already voted for this comment
-        $stmt = $conn->prepare("SELECT * FROM votes WHERE comment_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $comment_id, $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
+            $stmt = $conn->prepare("SELECT * FROM votes WHERE comment_id = ? AND user_id = ?");
+            $stmt->bind_param("ii", $comment_id, $user_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
 
-        if ($result->num_rows > 0) {
-            echo json_encode(['status' => 'error', 'message' => 'You have already voted for this comment']);
+            if ($result->num_rows > 0) {
+                echo json_encode(['status' => 'error', 'message' => 'You have already voted for this comment']);
+                exit();
+            }
+
+            $stmt = $conn->prepare("INSERT INTO votes (comment_id, user_id, vote) VALUES (?, ?, ?)");
+            if (!$stmt) {
+                throw new Exception('Failed to prepare statement: ' . $conn->error);
+            }
+            $stmt->bind_param("iis", $comment_id, $user_id, $vote);
+            if (!$stmt->execute()) {
+                throw new Exception('Failed to execute statement: ' . $stmt->error);
+            }
+
+            echo json_encode(['status' => 'success', 'message' => 'Vote recorded successfully']);
             exit();
-        }
+        } elseif (isset($_POST['lat'], $_POST['lng'], $_POST['comment'])) {
+            // Handle adding a comment
+            $lat = floatval($_POST['lat']);
+            $lng = floatval($_POST['lng']);
+            $comment = htmlspecialchars($_POST['comment']);
+            $user = $_SESSION['user'];
 
-        // Insert the vote
-        $stmt = $conn->prepare("INSERT INTO votes (comment_id, user_id, vote) VALUES (?, ?, ?)");
-        if (!$stmt) {
-            throw new Exception('Failed to prepare statement: ' . $conn->error);
-        }
+            $stmt = $conn->prepare("INSERT INTO comments (user, lat, lng, comment, created_at) VALUES (?, ?, ?, ?, NOW())");
+            if (!$stmt) {
+                throw new Exception('Failed to prepare statement: ' . $conn->error);
+            }
+            $stmt->bind_param("sdds", $user, $lat, $lng, $comment);
+            if (!$stmt->execute()) {
+                throw new Exception('Failed to execute statement: ' . $stmt->error);
+            }
 
-        $stmt->bind_param("iis", $comment_id, $user_id, $vote);
-        if (!$stmt->execute()) {
-            throw new Exception('Failed to execute statement: ' . $stmt->error);
+            echo json_encode(['status' => 'success', 'message' => 'Comment added successfully']);
+            exit();
+        } else {
+            throw new Exception('Invalid request');
         }
-
-        echo json_encode(['status' => 'success', 'message' => 'Vote recorded successfully']);
-        exit();
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
         exit();
     }
 }
-
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -91,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['comment_id'], $_POST[
             <tr>
                 <th>Area</th>
                 <th>Comment</th>
+                <th>User</th>
                 <th>Date</th>
                 <th>Vote</th> <!-- New column for voting buttons -->
             </tr>
@@ -102,8 +119,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['comment_id'], $_POST[
 
     <!-- Google Maps API and custom JavaScript -->
     <script>
+        let map;
+        let clickedLatLng;
+
+        function initMap() {
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: { lat: 51.5072, lng: 0.1276 }, // Default location (London)
+                zoom: 19,
+            });
+
+            fetch('get_comments.php')
+                .then(response => response.json())
+                .then(data => {
+                    const commentsTable = document.querySelector("#commentsTable tbody");
+                    commentsTable.innerHTML = ''; // Clear existing rows
+                    data.forEach(comment => {
+                        const row = document.createElement("tr");
+                        row.innerHTML = `
+                            <td>${comment.area || 'Unknown'}</td>
+                            <td>${comment.comment}</td>
+                            <td>${comment.user}</td>
+                            <td>${new Date(comment.created_at).toLocaleString()}</td>
+                            <td>
+                                <button onclick="voteComment(${comment.id}, 'true')">Vote True</button>
+                                <button onclick="voteComment(${comment.id}, 'false')">Vote False</button>
+                            </td>
+                        `;
+                        commentsTable.appendChild(row);
+                    });
+                });
+        }
+
+        function submitComment() {
+            const commentText = document.getElementById("commentText").value;
+            if (!clickedLatLng || !commentText) {
+                alert("Please fill in all fields");
+                return;
+            }
+            fetch('', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `lat=${clickedLatLng.lat()}&lng=${clickedLatLng.lng()}&comment=${encodeURIComponent(commentText)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert("Comment added successfully");
+                    closeModal();
+                    initMap(); // Refresh the map and comments
+                } else {
+                    alert(`Error: ${data.message}`);
+                }
+            })
+            .catch(error => console.error("Error:", error));
+        }
+
         function voteComment(commentId, voteType) {
-            console.log(`Sending vote: comment_id=${commentId}, vote=${voteType}`); // Debug log
             fetch('', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -111,14 +182,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['comment_id'], $_POST[
             })
             .then(response => response.json())
             .then(data => {
-                console.log(data); // Log backend response
                 if (data.status === 'success') {
-                    alert('Vote recorded successfully!');
+                    alert("Vote recorded successfully");
                 } else {
                     alert(`Error: ${data.message}`);
                 }
             })
-            .catch(error => console.error('Error:', error));
+            .catch(error => console.error("Error:", error));
+        }
+
+        function openModal() {
+            document.getElementById("overlay").style.display = "block";
+            document.getElementById("commentModal").style.display = "block";
+        }
+
+        function closeModal() {
+            document.getElementById("overlay").style.display = "none";
+            document.getElementById("commentModal").style.display = "none";
         }
     </script>
     <script async src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap"></script>
